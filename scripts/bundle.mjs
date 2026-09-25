@@ -34,10 +34,14 @@ const MODULE_ORDER = [
   'src/taxonomy.js',
   'src/csv.js',
   'src/classify.js',
+  'src/company.js',
   'src/build.js',
+  'src/team.js',
   'src/dom.js',
   'src/store.js',
   'src/ask.js',
+  'src/routes.js',
+  'src/targets.js',
   'src/llm.js',
   'src/enrich.js',
   'src/askllm.js',
@@ -52,6 +56,7 @@ const MODULE_ORDER = [
   'src/detail.js',
   'src/overview.js',
   'src/upload.js',
+  'src/teamui.js',
   'src/main.js'
 ];
 

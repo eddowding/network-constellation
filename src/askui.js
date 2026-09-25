@@ -14,6 +14,7 @@ import { $, esc, fmt } from './dom.js';
 import { resolveQuery, runQuery, describe, buildIdf, mergeFilter } from './ask.js';
 import { SEN_ORDER } from './taxonomy.js';
 import { understandQuestion } from './askllm.js';
+import { routesFor, byTeammate, yearOf } from './routes.js';
 
 const PAGE = 12;            // rows drawn at a time; "Show more" adds another page
 
@@ -63,6 +64,9 @@ export function wireAsk({ world, D, people, ui }) {
   const degraded = people.length > 0 && people[0].degraded;
 
   let results = [];
+  let answer = [];          // the whole answer, before any teammate filter
+  let only = -1;            // the teammate the answer is narrowed to, or -1
+  const team = D.team || [];
   let at = 0;
   let shown = PAGE;         // how many rows are drawn
   let lastFilter = null;    // for highlighting matched words in each row
@@ -95,6 +99,9 @@ export function wireAsk({ world, D, people, ui }) {
   /** Nothing lit, nobody marked, no rows: what an empty answer leaves behind. */
   function unlight() {
     results = [];
+    answer = [];
+    only = -1;
+    renderTeam();
     at = 0;
     landed = false;
     world.setHits(null);
@@ -156,7 +163,8 @@ export function wireAsk({ world, D, people, ui }) {
     const was = landed ? results[at] : null;
 
     // A node the force simulation has not placed yet cannot be flown to.
-    results = all.filter(p => nodeFor(p)?.x !== undefined);
+    answer = all.filter(p => nodeFor(p)?.x !== undefined);
+    results = narrowed();
     at = 0;
     shown = PAGE;
     lastFilter = filter;
@@ -167,12 +175,8 @@ export function wireAsk({ world, D, people, ui }) {
     queryEl.innerHTML = renderQuery(filter, interpretation);
     queryEl.title = describe(filter).replace('\n', ' \u00b7 ');
     renderCaveat(filter, excluded);
-    // The count is the answer, so it is the headline.
-    const pct = people.length ? (results.length / people.length) * 100 : 0;
-    countEl.textContent = results.length === 1 ? '1 person' : `${fmt(results.length)} people`;
-    $('askSub').textContent = results.length
-      ? `${pct < 1 ? '<1' : Math.round(pct)}% of your network`
-      : 'in your network';
+    headline();
+    renderTeam();
 
     if (!results.length) {
       // the previous answer's lit set and rows must not outlive it
@@ -196,6 +200,82 @@ export function wireAsk({ world, D, people, ui }) {
       world.setHits(new Set(results.map(nodeFor).filter(Boolean)));
       return;
     }
+    render();
+    light();
+  }
+
+  /** The answer, narrowed to one teammate's contacts when one is picked. */
+  const narrowed = () => only < 0 ? answer : answer.filter(p => (p.knownBy || []).some(k => k.o === only));
+
+  /** The count is the answer, so it is the headline. */
+  function headline() {
+    const pct = people.length ? (results.length / people.length) * 100 : 0;
+    countEl.textContent = results.length === 1 ? '1 person' : `${fmt(results.length)} people`;
+    $('askSub').textContent = only >= 0
+      ? `via ${team[only]}`
+      : results.length ? `${pct < 1 ? '<1' : Math.round(pct)}% of ${team.length > 1 ? 'the team’s' : 'your'} network` : 'in your network';
+  }
+
+  /**
+   * Who on the team can reach this answer: one chip per teammate with how many
+   * of these people they know (and how many by a strong route). Clicking one
+   * narrows the answer to their contacts; clicking it again widens it back.
+   */
+  function renderTeam() {
+    const el = $('askTeam');
+    if (!el) return;
+    if (team.length < 2 || !answer.length) { el.hidden = true; el.innerHTML = ''; return; }
+    const rows = byTeammate(answer, team);
+    el.hidden = false;
+    el.innerHTML = `<span class="aq-k">Who can introduce</span><span class="aq-v">` +
+      rows.map(r => `<button type="button" class="aq-chip at-chip${only === r.o ? ' on' : ''}" data-o="${r.o}"` +
+        ` title="${r.strong} by a strong route (connected in the last few years)">` +
+        `${esc(r.owner)} <b>${fmt(r.n)}</b>${r.strong ? ` <span class="at-strong">${fmt(r.strong)} strong</span>` : ''}</button>`).join('') +
+      `</span>`;
+    for (const b of el.querySelectorAll('.at-chip')) {
+      b.addEventListener('click', () => {
+        const o = Number(b.dataset.o);
+        only = only === o ? -1 : o;
+        results = narrowed();
+        at = 0;
+        shown = PAGE;
+        headline();
+        renderTeam();
+        render();
+        light();
+      });
+    }
+  }
+
+  /**
+   * An answer that did not come from a question: a target account's people, a
+   * teammate's contacts. Same panel, same list, same lit set.
+   */
+  function showPeople(list, { title = '', note = '' } = {}) {
+    stopThinking();
+    box.value = '';
+    box.dataset.ran = '';
+    answer = list.filter(p => nodeFor(p)?.x !== undefined);
+    only = -1;
+    results = answer;
+    at = 0;
+    shown = PAGE;
+    lastFilter = null;
+    touched = false;
+    panel.hidden = false;
+    document.body.classList.add('answering');
+    queryEl.innerHTML = `<p class="aq-read">${esc(title)}</p>` + (note ? `<p class="aq-note">${esc(note)}</p>` : '');
+    queryEl.title = '';
+    $('askCaveat').hidden = true;
+    headline();
+    renderTeam();
+    if (!results.length) {
+      unlight();
+      emptyEl.hidden = false;
+      emptyEl.textContent = 'Nobody in the network.';
+      return;
+    }
+    emptyEl.hidden = true;
     render();
     light();
   }
@@ -307,9 +387,19 @@ export function wireAsk({ world, D, people, ui }) {
         (subtitle ? `<span class="ar-sub">${highlight(subtitle)}</span>` : '') +
         (head ? `<span class="ar-head">${highlight(head)}</span>` : '') +
         (tags.length ? `<span class="ar-tags">${tags.map(t => `<span class="ar-tag">${esc(t)}</span>`).join('')}</span>` : '') +
+        via(p) +
       `</span>` +
       `<span class="ar-go" aria-hidden="true">›</span>` +
       `</button></div>`;
+  }
+
+  /** "via Patrick · 2024 · strong", best route first, for a pooled network. */
+  function via(p) {
+    if (!team.length || !p.knownBy?.length) return '';
+    const rs = routesFor(p, team);
+    return `<span class="ar-via">via ` + rs.slice(0, 3).map(r =>
+      `<span class="rt rt-${r.label}">${esc(r.owner)} · ${esc(yearOf(r.t))}</span>`).join(' ') +
+      (rs.length > 3 ? ` +${rs.length - 3}` : '') + `</span>`;
   }
 
   function mark() {
@@ -388,7 +478,7 @@ export function wireAsk({ world, D, people, ui }) {
   }
 
   Object.assign(api, {
-    run, ask, clear, setEmployers,
+    run, ask, clear, setEmployers, showPeople,
     detail: null,
     set enrichment(v) { api._enrich = v; },
     get enrichment() { return api._enrich; }

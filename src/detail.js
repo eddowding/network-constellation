@@ -14,6 +14,7 @@ import { normKey } from './enrich.js';
 import { researchPerson, researchKey, parseBrief, RESEARCH_HEADINGS } from './research.js';
 import { getResearch } from './store.js';
 import { SEN_ORDER } from './taxonomy.js';
+import { routesFor, byTeammate, yearOf } from './routes.js';
 
 const MAX_COLLEAGUES = 8;
 const MAX_STAFF = 40;
@@ -99,12 +100,41 @@ export function createDetail({ world, D, people, ui, getEmployers, getKey, enric
     }
   }
 
+  /* ---------- who on the team knows them ---------- */
+
+  const team = D.team || [];
+
+  /**
+   * Every teammate connected to this person, best route first. The strength
+   * is only how recently they connected — the teammate knows better, so the
+   * label is a prompt to ask them, not a verdict.
+   */
+  function knownBlock(p) {
+    if (!team.length || !p.knownBy?.length) return '';
+    const rs = routesFor(p, team);
+    return sec(`Known by · ${fmt(rs.length)} of ${fmt(team.length)}`,
+      rs.map(r => `<div class="d-kv d-route"><span>${esc(r.owner)}</span>` +
+        `<span><span class="rt rt-${r.label}">${esc(r.label)}</span> since ${esc(yearOf(r.t))}</span></div>`).join('') +
+      `<span class="d-note">Strength is only how recently they connected on LinkedIn. Ask ${esc(rs[0].owner)} how well they really know them.</span>`);
+  }
+
+  /** For an employer: which teammates know people there, and how many. */
+  function teamAt(list) {
+    if (team.length < 2 || !list.length) return '';
+    const rows = byTeammate(list, team);
+    if (!rows.length) return '';
+    return sec('Who on the team knows people here',
+      rows.map(r => `<div class="d-kv"><span>${esc(r.owner)}</span><span>${fmt(r.n)}${r.strong ? ` · <span class="rt rt-strong">${fmt(r.strong)} strong</span>` : ''}</span></div>`).join(''));
+  }
+
   /* ---------- people rows ---------- */
 
   const personRow = q =>
     `<button type="button" class="drow" data-i="${q.i}">` +
     `<span class="drow-name">${esc(q.name)}</span>` +
     (q.role ? `<span class="drow-role">${esc(q.role)}</span>` : '') +
+    (team.length > 1 && q.knownBy?.length
+      ? `<span class="drow-role">via ${routesFor(q, team).map(r => esc(r.owner)).join(', ')}</span>` : '') +
     `</button>`;
 
   function wirePersonRows() {
@@ -160,6 +190,8 @@ export function createDetail({ world, D, people, ui, getEmployers, getKey, enric
       (p.headline && p.headline !== p.role
         ? sec('Headline', `<span class="d-text">${esc(p.headline)}</span>`)
         : '') +
+
+      knownBlock(p) +
 
       // the enrich card follows the headline, so it reads as the next step
       `<div class="d-enrich" id="dResearch"></div>` +
@@ -373,6 +405,8 @@ export function createDetail({ world, D, people, ui, getEmployers, getKey, enric
       `<div class="d-meta">${fmt(staff.length)} ${staff.length === 1 ? 'person' : 'people'} in your network` +
       (hub ? '' : ' <span class="d-dim">· too few for a hub</span>') + `</div>` +
       (hub ? `<button type="button" class="linky" id="dFly">Fly to the hub</button>` : '') +
+
+      teamAt(staff) +
 
       employerBlock(name) +
 

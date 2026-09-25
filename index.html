@@ -70,10 +70,10 @@
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ffd166" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 16V4"/><path d="M7.5 8.5 12 4l4.5 4.5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/>
           </svg>
-          <span class="dz-title">Drop Connections.csv here</span>
+          <span class="dz-title">Drop one or more Connections.csv files here</span>
           <span class="dz-sub">or <button type="button" class="linky" id="pickFile">choose a file</button></span>
           <span class="dz-hint">Read in this tab &middot; kept in this browser &middot; never uploaded</span>
-          <input type="file" id="csvFile" accept=".csv,text/csv" hidden>
+          <input type="file" id="csvFile" accept=".csv,text/csv" multiple hidden>
         </div>
         <div class="landing-state" id="landingState" aria-live="polite"></div>
       </div>
@@ -140,6 +140,16 @@ npm run dev</code></pre>
     <h1>Network Constellation</h1>
   </div>
   <div id="overview"></div>
+
+  <div class="grp" id="teamGrp" hidden>
+    <span class="lab">The team</span>
+    <div id="teamList" class="team-list"></div>
+    <div class="seg team-actions">
+      <button type="button" id="teamShared">Known by 2+</button>
+      <button type="button" id="openTargets">Target accounts</button>
+    </div>
+    <span class="hint">Click a teammate to light their connections</span>
+  </div>
 
   <div class="grp">
     <span class="lab">Ask your network</span>
@@ -226,6 +236,7 @@ npm run dev</code></pre>
     <button type="button" class="d-close" id="answerClose" aria-label="Close the answer">&times;</button>
   </div>
   <div id="askQuery"></div>
+  <div id="askTeam" class="aq-row at-row" hidden></div>
   <p id="askCaveat" hidden></p>
   <p id="askEmpty" hidden></p>
   <div id="askList" role="list" aria-label="People who match"></div>
@@ -266,6 +277,34 @@ npm run dev</code></pre>
       </div>
       <p class="ehelp small" id="enrichKnown"></p>
     </section>
+    </div>
+  </div>
+</div>
+
+<div id="targets" class="sheet" hidden>
+  <div class="scrim" id="targetsScrim"></div>
+  <div class="sheet-panel panel sheet-wide" role="dialog" aria-modal="true" aria-labelledby="targetsTitle">
+    <div class="d-head">
+      <span class="lab" id="targetsTitle">Target accounts</span>
+      <button type="button" class="d-close" id="targetsClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="sheet-body">
+      <section class="enrich-body">
+        <h2 class="sheet-h">Who can get us in?</h2>
+        <p class="ehelp">Paste the companies you want to reach, one per line, or choose a CSV export from your CRM (the column called Company, Account or Name is used). Each is matched against employers in the network, subsidiaries included, and the best introduction route is picked: a recent connection to the most senior person there.</p>
+        <textarea id="targetText" rows="7" placeholder="Airbus&#10;Ryanair&#10;Microsoft" spellcheck="false"></textarea>
+        <div class="erow">
+          <button type="button" class="linky" id="targetFileBtn">Choose a CSV</button>
+          <input type="file" id="targetFile" accept=".csv,text/csv,.txt" hidden>
+          <span id="targetCount"></span>
+        </div>
+        <button type="button" class="primary" id="targetRun">Match against the network</button>
+        <p class="ehelp small">Stays in this browser. The list is remembered on this device.</p>
+      </section>
+      <section class="enrich-body" id="targetOut" hidden>
+        <div class="erow"><span class="lab" id="targetSummary"></span><button type="button" class="linky" id="targetCsv">Download CSV</button></div>
+        <div id="targetTable" class="tg-table" role="table"></div>
+      </section>
     </div>
   </div>
 </div>

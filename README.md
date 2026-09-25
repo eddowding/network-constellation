@@ -27,6 +27,38 @@ need an introduction.
   can also research one person on the public web when you press **Enrich
   profile**.
 
+## Team mode: pooling several people's exports
+
+This fork adds one thing the original deliberately doesn't do: **pool a team's
+networks**, so anyone can find out who on the team can introduce them.
+
+- **Drop several exports at once** (or add one later: they are kept, so the
+  next teammate's file extends the same network). Each is tagged with its
+  owner, taken from the file name (`Connections_patrick.csv` → Patrick) and
+  editable before you build.
+- **Contacts are merged** on their LinkedIn profile URL, and each remembers
+  *who on the team knows them, and since when*.
+- **Employer names are folded**: legal suffixes and punctuation go, so
+  "Airbus SE" and "Airbus" share one hub; "Self-employed", "Freelance" and
+  "Stealth" stop being hubs at all.
+- **Who knows X?** Find a person and their panel says who on the team knows
+  them. An employer's panel says which teammates know people there.
+- **Who knows someone who [question]?** Every answer shows *Who can
+  introduce*: one chip per teammate with how many of the matches they know.
+  Click one to narrow the answer to their contacts. Every row says
+  `via Patrick · 2025`.
+- **Route strength** is only how recently the teammate connected: strong
+  within ~2 years, fading to weak by ~12. A shared contact scores higher.
+  It's a prompt to ask the teammate, never a verdict.
+- **Target accounts**: paste a list of companies (or choose a CRM CSV) and
+  get back, for each, how many people you know there, which teammates can
+  reach them, and the best route in: a recent connection to the most senior
+  person. It downloads as a CSV.
+
+Everything still runs in the browser. The pooled network is kept in the
+browser of whoever built it; share exports within the team the way you share
+any personal data, with everyone's agreement.
+
 ## Get started
 
 1. **Export your connections.** On LinkedIn, open

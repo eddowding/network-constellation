@@ -8,6 +8,7 @@ import { wireEnrich } from './enrichui.js';
 import { createDetail } from './detail.js';
 import { renderOverview } from './overview.js';
 import { createLanding } from './upload.js';
+import { wireTeam } from './teamui.js';
 import { parseCSV } from './csv.js';
 import { deNote, buildGraph, peopleFromTuples, hydratePeople } from './build.js';
 import { loadGraph, forgetAll, storeProblem } from './store.js';
@@ -49,7 +50,7 @@ async function findGraph() {
 
   const kept = await loadGraph();
   if (kept?.D) {
-    return { D: kept.D, people: kept.people || peopleFromTuples(kept.D), source: 'browser', sourceName: kept.sourceName };
+    return { D: kept.D, people: kept.people || peopleFromTuples(kept.D), source: 'browser', sourceName: kept.sourceName, exports: kept.exports };
   }
 
   if (!LOCAL) return null;
@@ -239,6 +240,7 @@ async function start(found, landing, existing) {
   ask.detail = detail;
 
   renderOverview({ D, people, world });
+  const team = wireTeam({ D, people, ask, say: ui.say });
 
   wireDataControls(found, landing, ui);
 
@@ -261,7 +263,7 @@ async function start(found, landing, existing) {
     setTimeout(() => ui.say(storeProblem.message), 3000);
   }
 
-  app = { world, D, people, ui, marker, detail, ask, source: found.source };
+  app = { world, D, people, ui, marker, detail, ask, team, source: found.source };
   window.__NC = app;
   return app;
 }
@@ -293,7 +295,9 @@ function wireDataControls(found, landing, ui) {
   // disk, the demo, or one the browser refused to keep has nothing to erase.
   const kept = found.source === 'browser';
   forget.hidden = !kept;
-  replace.textContent = demo ? 'Use my connections' : 'Use another file';
+  replace.textContent = demo ? 'Use my connections' : (found.exports?.length ? 'Add or change exports' : 'Use another file');
+  // the exports behind this graph, so a teammate's file adds to them
+  if (found.exports?.length) landing.setExports(found.exports);
   hint.textContent = {
     demo: 'The demo: 250 invented people, nothing kept',
     browser: (found.sourceName || 'Your file') + ' · kept in this browser only',

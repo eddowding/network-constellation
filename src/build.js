@@ -18,6 +18,7 @@
 import { pickColumn } from './csv.js';
 import { classify } from './classify.js';
 import { SEN_ORDER } from './taxonomy.js';
+import { canonicalCompanies } from './company.js';
 
 /** An employer needs this many people before it earns a hub of its own. */
 export const MIN_COMPANY_SIZE = 2;
@@ -135,6 +136,17 @@ export function buildGraph(rows, opts = {}) {
     .filter(p => p.name)
     .map((p, i) => ({ ...p, i }));
 
+  // Pooled team exports: who on the team knows each person (aligned with rows),
+  // and employer names from the Company column, folded so "Airbus SE" and
+  // "Airbus" are one hub and "Self-employed" is none. Both are opt-in, so a
+  // single export builds exactly as it always has.
+  if (opts.knownBy) for (const p of people) p.knownBy = opts.knownBy[p.row] || [];
+  if (opts.tidyCompanies) {
+    const raw = p => (columns.company && rows[p.row][columns.company]) || p.company;
+    const canon = canonicalCompanies(people.map(raw));
+    for (const p of people) p.company = canon(raw(p));
+  }
+
   if (!people.length) throw new BuildError('No rows in that file had a name.');
 
   const domCount = new Map();
@@ -180,6 +192,13 @@ export function buildGraph(rows, opts = {}) {
     ])
   };
 
+  // Pooled exports only, so a single export's payload is byte-identical:
+  // the teammates, and on each person [teamIndex, ...] — who knows them.
+  if (opts.team) {
+    D.team = opts.team;
+    D.people.forEach((t, i) => t.push((people[i].knownBy || []).map(k => k.o)));
+  }
+
   const stats = {
     people: people.length,
     domains: doms.length,
@@ -211,6 +230,7 @@ export function peopleFromTuples(D) {
     domains: [],
     slug: p[5],
     connectedOn: null,
+    knownBy: (p[7] || []).map(o => ({ o, t: null })),
     degraded: true
   }));
 }
@@ -224,7 +244,7 @@ export function peopleFromTuples(D) {
  * 900 KB and 3.7 MB.
  */
 export function leanPeople(people) {
-  return people.map(p => [p.headline || '', p.domains || [], p.connectedOn || 0]);
+  return people.map(p => [p.headline || '', p.domains || [], p.connectedOn || 0, (p.knownBy || []).map(k => [k.o, k.t || 0])]);
 }
 
 export function hydratePeople(D, lean) {
@@ -237,6 +257,7 @@ export function hydratePeople(D, lean) {
       headline: l[0] || '',
       domains: l[1] || [],
       connectedOn: l[2] || null,
+      knownBy: l[3] ? l[3].map(([o, t]) => ({ o, t: t || null })) : p.knownBy,
       degraded: false
     };
   });

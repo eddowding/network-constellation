@@ -43,7 +43,12 @@ src/logos.js          employer logos projected from 3D, sized by headcount
 src/ui.js             control panel, tooltip, status line
 src/askui.js          the question box and its answer panel
 src/enrichui.js       the Settings sheet: the key, employer enrichment and its progress
-src/upload.js         the landing page: drop anywhere, column mapper, build, a way back
+src/upload.js         the landing page: drop one or several exports, owner names, column mapper, build
+src/company.js        employer names folded to a comparison key; "Self-employed" etc. are not employers
+src/team.js           several exports -> one row per contact, each with knownBy [{o, t}] (team mode)
+src/routes.js         intro route strength (recency of the teammate's connection), per-teammate tallies
+src/targets.js        a pasted list / CRM CSV of target companies -> people there and the best route
+src/teamui.js         the team panel and the target-accounts sheet (only when D.team has 2+)
 src/build.js          rows -> graph payload; the one path Node and the browser share
 src/store.js          IndexedDB: the built graph, employer records and research briefs
 src/llm.js            raw-fetch Anthropic client (see below for why not the SDK)
@@ -102,6 +107,17 @@ scope, so two modules declaring the same `const` is a SyntaxError in the bundle
 and perfectly legal in the browser — the failure only appears in the built file.
 `bundle.mjs` checks for this and refuses. `$`, `esc` and `fmt` live in
 `src/dom.js` for exactly this reason; import them, never redeclare them.
+
+## Team mode (this fork)
+
+The browser always builds through `mergeExports()` -> `buildGraph(rows,
+{ columns: TEAM_COLUMNS, knownBy, team, tidyCompanies: true })`, even for one
+export, so a teammate's file added later extends the same network. The raw
+exports are stored alongside the graph for that reason. `D.team` and the
+eighth tuple slot (`[teamIndex, ...]`) are written only when `opts.team` is
+passed, so the Node build and the sample snapshot are byte-identical to
+upstream. Route strength is recency and nothing else; don't dress it up as
+relationship strength, because LinkedIn gives us no such thing.
 
 ## Two input shapes
 

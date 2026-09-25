@@ -8,6 +8,7 @@ import { $, esc, fmt } from './dom.js';
 import { parseCSV, decodeCsv } from './csv.js';
 import { deNote, buildGraph, detectColumns, columnsUsable, BuildError } from './build.js';
 import { saveGraph, requestPersistence, storeProblem } from './store.js';
+import { mergeExports, ownerFromFilename, TEAM_COLUMNS } from './team.js';
 
 /** Which column plays which role, in the order the mapper shows them. */
 const ROLES = [
@@ -40,10 +41,15 @@ export function createLanding({ onBuilt } = {}) {
   const state = $('landingState');
   const back = $('landingBack');
 
-  let rows = null;
+  // One entry per dropped export: { name, owner, rows, columns, encodingNote }.
+  // Several teammates' files pool into one network; each keeps its owner so
+  // every contact can say who on the team knows them.
+  let exports = [];
+  let rows = null;          // the export being column-mapped, if any
   let columns = null;
   let sourceName = '';
   let encodingNote = '';
+  let mapping = null;       // that export's entry
   let openDemo = null;
   let accepting = true;     // false in a single-file build that carries its own graph
 
@@ -84,44 +90,75 @@ export function createLanding({ onBuilt } = {}) {
     zip: ['That is a zip archive.', 'Unzip it and drop the CSV from inside.']
   };
 
-  async function take(file) {
-    sourceName = file.name;
-    say(`<span class="ls-mono">Reading ${esc(file.name)}…</span>`);
+  /** Several files at once: read them all, then show the list. */
+  async function takeAll(files) {
+    const problems = [];
+    for (const file of files) {
+      const problem = await take(file, { quiet: true });
+      if (problem) problems.push(problem);
+    }
+    if (mapping) return;                          // a file needs its columns set first
+    if (exports.length) summarise(problems);
+    else say(problems.join('') || '<span class="ls-mono">Nothing to read.</span>', 'bad');
+  }
+
+  /** Read one file into `exports`. With `quiet`, returns a problem instead of showing it. */
+  async function take(file, { quiet = false } = {}) {
+    const fail = html => { if (quiet) return html; say(html, 'bad'); return html; };
+    if (!quiet) say(`<span class="ls-mono">Reading ${esc(file.name)}…</span>`);
     let decoded;
     try {
       decoded = decodeCsv(new Uint8Array(await file.arrayBuffer()));
     } catch (err) {
-      say(`<span class="ls-mono">Could not read that file.</span>`, 'bad');
       console.error(err);
-      return;
+      return fail(`<span class="ls-mono">Could not read ${esc(file.name)}.</span>`);
     }
     if (decoded.kind) {
       const [what, next] = NOT_CSV[decoded.kind];
-      say(`<span class="ls-mono">${esc(what)}</span><span class="ls-note">${esc(next)}</span>`, 'bad');
-      return;
+      return fail(`<span class="ls-mono">${esc(file.name)}: ${esc(what)}</span><span class="ls-note">${esc(next)}</span>`);
     }
-    takeText(decoded.text, file.name, decoded.encoding);
+    return takeText(decoded.text, file.name, decoded.encoding, { quiet });
   }
 
-  function takeText(text, name, encoding = 'utf-8') {
-    sourceName = name;
-    encodingNote = encoding === 'windows-1252'
-      ? 'This file is not UTF-8, so it was read as Windows-1252, which is what Excel saves. If accented names look wrong below, save it again as “CSV UTF-8”.'
+  function takeText(text, name, encoding = 'utf-8', { quiet = false } = {}) {
+    const fail = html => { if (!quiet) say(html, 'bad'); return html; };
+    const note = encoding === 'windows-1252'
+      ? 'Not UTF-8, so read as Windows-1252 (what Excel saves). If accented names look wrong, save it again as “CSV UTF-8”.'
       : '';
+    let parsed;
     try {
-      rows = parseCSV(deNote(text));
+      parsed = parseCSV(deNote(text));
     } catch (err) {
-      say('<span class="ls-mono">That does not parse as CSV.</span>', 'bad');
       console.error(err);
-      return;
+      return fail(`<span class="ls-mono">${esc(name)} does not parse as CSV.</span>`);
     }
-    if (!rows.length) {
-      say('<span class="ls-mono">That file has no rows in it.</span>', 'bad');
-      return;
-    }
-    columns = detectColumns(rows[0]);
-    if (columnsUsable(columns)) summarise();
-    else mapper('Could not tell which column is which. Set them here.');
+    if (!parsed.length) return fail(`<span class="ls-mono">${esc(name)} has no rows in it.</span>`);
+
+    const ex = {
+      name,
+      owner: ownerFromFilename(name),
+      rows: parsed,
+      columns: detectColumns(parsed[0]),
+      encodingNote: note
+    };
+    // the same file dropped twice replaces itself
+    const same = exports.findIndex(e => e.name === name);
+    if (same >= 0) { ex.owner = exports[same].owner || ex.owner; exports[same] = ex; }
+    else exports.push(ex);
+
+    if (!columnsUsable(ex.columns)) { remap(ex, 'Could not tell which column is which. Set them here.'); return null; }
+    if (!quiet) summarise();
+    return null;
+  }
+
+  /** Point the mapper at one export. */
+  function remap(ex, message) {
+    mapping = ex;
+    rows = ex.rows;
+    columns = ex.columns;
+    sourceName = ex.name;
+    encodingNote = ex.encodingNote;
+    mapper(message);
   }
 
   /* ---- what we think the columns are ---- */
@@ -133,23 +170,69 @@ export function createLanding({ onBuilt } = {}) {
     return [r[columns.first], r[columns.last]].filter(Boolean).join(' ');
   }
 
-  function summarise() {
-    const named = ROLES
-      .filter(([k]) => columns[k])
-      .map(([k, label]) => `<span class="col"><span class="col-k">${label}</span>${esc(columns[k])}</span>`)
-      .join('');
+  /**
+   * The exports so far, one row each: who it belongs to (editable — it is
+   * what every "via" in the answers will say), the file, its size, and what
+   * was understood of its columns. One export builds a personal map as
+   * before; two or more pool into a team network.
+   */
+  function summarise(problems = []) {
+    mapping = null;
+    const n = exports.reduce((a, e) => a + e.rows.length, 0);
+    const team = exports.length > 1;
+    const list = exports.map((e, i) => {
+      const named = ROLES
+        .filter(([k]) => e.columns[k])
+        .map(([k, label]) => `<span class="col"><span class="col-k">${label}</span>${esc(e.columns[k])}</span>`)
+        .join('');
+      return `<div class="ex-row" data-i="${i}">` +
+        `<div class="ex-top">` +
+          `<input type="text" class="ex-owner" data-i="${i}" value="${esc(e.owner)}" placeholder="Whose connections?" aria-label="Whose connections are in ${esc(e.name)}" autocomplete="off" spellcheck="false">` +
+          `<span class="ls-mono ex-meta">${fmt(e.rows.length)} rows · ${esc(e.name)}</span>` +
+          `<button type="button" class="linky ex-cols" data-i="${i}">Columns</button>` +
+          `<button type="button" class="d-close ex-drop" data-i="${i}" aria-label="Remove ${esc(e.name)}">&times;</button>` +
+        `</div>` +
+        (exports.length === 1 ? `<div class="cols">${named}</div>` : '') +
+        (e.encodingNote ? `<span class="ls-note">${esc(e.encodingNote)}</span>` : '') +
+      `</div>`;
+    }).join('');
+
     say(
-      `<div class="ls-head"><span class="ls-mono">${fmt(rows.length)} ${rows.length === 1 ? 'row' : 'rows'} · ${esc(sourceName)}</span>` +
-      `<button type="button" class="linky" id="remap">Change columns</button></div>` +
-      `<div class="cols">${named}</div>` +
-      (encodingNote ? `<span class="ls-note">${esc(encodingNote)} First row: <strong>${esc(firstName())}</strong></span>` : '') +
-      (columns.headline
-        ? ''
-        : '<span class="ls-note">No headline column, so one is composed as “Position at Company”. That is what the official export gives you and it classifies fine.</span>') +
-      `<button type="button" class="primary" id="buildBtn">Build the constellation</button>`
+      problems.join('') +
+      `<div class="ls-head"><span class="ls-mono">${exports.length} ${exports.length === 1 ? 'export' : 'exports'} · ${fmt(n)} rows</span>` +
+      `<button type="button" class="linky" id="addExport">Add a teammate’s export</button></div>` +
+      `<div class="ex-list">${list}</div>` +
+      (team
+        ? '<span class="ls-note">Contacts in more than one export are merged, and each remembers who on the team knows them. Name every export: that name is what “who can introduce” will say.</span>'
+        : '<span class="ls-note">Add teammates’ exports to pool them into one network and see who can introduce whom. Name this one so it can be told apart.</span>') +
+      `<span class="ls-note" id="ownerWarn"></span>` +
+      `<button type="button" class="primary" id="buildBtn">${team ? 'Build the team network' : 'Build the constellation'}</button>`
     );
-    $('remap').addEventListener('click', () => mapper());
+
+    const check = () => {
+      const names = exports.map(e => e.owner.trim().toLowerCase());
+      const missing = team && names.some(x => !x);
+      const dup = names.filter(Boolean).length !== new Set(names.filter(Boolean)).size;
+      $('ownerWarn').textContent = missing
+        ? 'Give every export an owner.'
+        : dup ? 'Two exports share an owner; they will be treated as one person’s.' : '';
+      $('buildBtn').disabled = missing;
+    };
+    for (const inp of state.querySelectorAll('.ex-owner')) {
+      inp.addEventListener('input', () => { exports[Number(inp.dataset.i)].owner = inp.value; check(); });
+    }
+    for (const b of state.querySelectorAll('.ex-cols')) {
+      b.addEventListener('click', () => remap(exports[Number(b.dataset.i)]));
+    }
+    for (const b of state.querySelectorAll('.ex-drop')) {
+      b.addEventListener('click', () => {
+        exports.splice(Number(b.dataset.i), 1);
+        if (exports.length) summarise(); else say('');
+      });
+    }
+    $('addExport').addEventListener('click', () => input.click());
     $('buildBtn').addEventListener('click', build);
+    check();
   }
 
   /* ---- manual column mapping ---- */
@@ -170,12 +253,13 @@ export function createLanding({ onBuilt } = {}) {
         `<select data-role="${k}">${options(k)}</select></label>`).join('') +
       `</div>` +
       `<span class="ls-note" id="mapWarn"></span>` +
-      `<button type="button" class="primary" id="buildBtn">Build the constellation</button>`
+      `<button type="button" class="primary" id="buildBtn">Use these columns</button>`
     );
 
     const selects = [...state.querySelectorAll('select[data-role]')];
     const sync = () => {
       for (const s of selects) columns[s.dataset.role] = s.value || null;
+      if (mapping) mapping.columns = columns;
       const ok = columnsUsable(columns);
       $('buildBtn').disabled = !ok;
       $('mapWarn').textContent = ok
@@ -184,7 +268,7 @@ export function createLanding({ onBuilt } = {}) {
     };
     selects.forEach(s => s.addEventListener('change', sync));
     sync();
-    $('buildBtn').addEventListener('click', build);
+    $('buildBtn').addEventListener('click', () => summarise());
   }
 
   /* ---- build, keep, reload ---- */
@@ -200,11 +284,22 @@ export function createLanding({ onBuilt } = {}) {
       await new Promise(r => { requestAnimationFrame(() => setTimeout(r, 0)); setTimeout(r, 50); });
     };
     if (btn) btn.disabled = true;
-    await phase(`Classifying ${fmt(rows.length)} people…`);
+    const total = exports.reduce((a, e) => a + e.rows.length, 0);
+    await phase(exports.length > 1 ? `Merging ${exports.length} exports…` : `Classifying ${fmt(total)} people…`);
 
     let built;
+    const sourceName = exports.length > 1
+      ? `${exports.length} exports: ${exports.map(e => e.owner.trim()).join(', ')}`
+      : exports[0].name;
     try {
-      built = buildGraph(rows, { columns });
+      // Always pooled, even for one export: the owner is what the answers
+      // name, and a second export added later extends the same network.
+      const merged = mergeExports(exports.map(e => ({ owner: e.owner, rows: e.rows, columns: e.columns })));
+      await phase(`Classifying ${fmt(merged.rows.length)} people…`);
+      built = buildGraph(merged.rows, {
+        columns: TEAM_COLUMNS, knownBy: merged.knownBy, team: merged.team, tidyCompanies: true
+      });
+      built.merge = merged.stats;
     } catch (err) {
       const detail = err instanceof BuildError && err.detail?.found
         ? ` Found: ${err.detail.found.join(', ')}` : '';
@@ -216,7 +311,12 @@ export function createLanding({ onBuilt } = {}) {
     try {
       await phase('Keeping it in this browser…');
       await requestPersistence();
-      await saveGraph({ D: built.D, people: built.people, sourceName });
+      // The raw exports are kept too, so the next teammate's file can be added
+      // without asking everyone to drop theirs again.
+      await saveGraph({
+        D: built.D, people: built.people, sourceName,
+        exports: exports.map(({ name, owner, rows, columns }) => ({ name, owner, rows, columns }))
+      });
       await phase('Opening…');
     } catch (err) {
       // The graph is built; this browser just will not keep it. Show it now
@@ -239,9 +339,9 @@ export function createLanding({ onBuilt } = {}) {
   // Reset after every pick, or choosing the same file a second time (after
   // fixing a column, say) fires no change event at all.
   input.addEventListener('change', e => {
-    const file = e.target.files[0];
+    const files = [...e.target.files];
     input.value = '';
-    if (file) take(file);
+    if (files.length) takeAll(files);
   });
 
   drop.addEventListener('click', e => { if (!e.target.closest('button, a')) input.click(); });
@@ -271,11 +371,11 @@ export function createLanding({ onBuilt } = {}) {
     e.preventDefault();
     depth = 0;
     drop.classList.remove('over');
-    const file = e.dataTransfer.files[0];
-    if (!file || !accepting) return;
+    const files = [...e.dataTransfer.files];
+    if (!files.length || !accepting) return;
     if (!isUp()) show();
     $('lp-drop')?.scrollIntoView({ block: 'center' });
-    take(file);
+    takeAll(files);
   });
 
   el.addEventListener('scroll', () => el.classList.toggle('scrolled', el.scrollTop > 8), { passive: true });
@@ -300,6 +400,12 @@ export function createLanding({ onBuilt } = {}) {
     if (e.key === 'Escape' && isUp() && !back.hidden) hide();
   });
 
+  /** The exports behind the running graph, so another can be added to them. */
+  function setExports(list) {
+    exports = (list || []).map(e => ({ ...e, encodingNote: '' }));
+    if (exports.length) summarise();
+  }
+
   setDemo(null);
-  return { show, hide, isUp, setDemo, setBack, takeText, setAccept: v => { accepting = v; } };
+  return { show, hide, isUp, setDemo, setBack, takeText, setExports, setAccept: v => { accepting = v; } };
 }

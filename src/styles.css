@@ -1679,3 +1679,55 @@ body.sheet-up { overflow: hidden; }
   color: var(--muted);
   padding-top: 8px;
 }
+
+/* ---------- team: pooled exports, routes, target accounts ---------- */
+
+/* route strength: how recently a teammate connected. Never colour alone —
+   the label or year always rides along. */
+.rt { display: inline-block; font-size: 11px; border-radius: 999px; padding: 1px 7px; background: var(--fill-2); color: var(--ink-2); white-space: nowrap; }
+.rt-strong { color: #30d158; background: rgba(48, 209, 88, 0.14); }
+.rt-fair { color: var(--hit-gold); background: rgba(255, 209, 102, 0.12); }
+.rt-weak { color: var(--muted); }
+.ar-via { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; font-size: 11px; color: var(--muted); }
+
+.at-row { margin-top: 6px; }
+.at-chip { cursor: pointer; border: 1px solid transparent; font: inherit; font-size: 11.5px; }
+.at-chip b { font-weight: 600; margin-left: 2px; }
+.at-chip.on { border-color: var(--s1); background: rgba(10, 132, 255, 0.18); }
+.at-strong { color: #30d158; margin-left: 4px; }
+
+.d-route { align-items: center; padding: 3px 0; }
+
+.team-list { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 8px; }
+.team-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; width: 100%; padding: 5px 8px; border: 0; border-radius: var(--r-ctl); background: transparent; color: var(--ink); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.team-row:hover { background: var(--fill-2); }
+.team-n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.team-actions button { flex: 1; }
+
+/* the export list on the landing */
+.ex-list { display: flex; flex-direction: column; gap: 8px; }
+.ex-row { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: var(--r-ctl); background: var(--fill-2); }
+.ex-top { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 6px 10px; }
+.ex-owner { grid-column: 1 / -1; min-width: 0; padding: 5px 8px; border: 1px solid var(--hair); border-radius: var(--r-chip); background: var(--fill); color: var(--ink); font: inherit; font-size: 13px; }
+.ex-owner:focus { outline: 2px solid var(--s1); outline-offset: 1px; }
+.ex-meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* target accounts */
+.sheet-panel.sheet-wide { width: min(860px, calc(100vw - 32px)); }
+#targetText { width: 100%; box-sizing: border-box; resize: vertical; padding: 8px 10px; border: 1px solid var(--hair); border-radius: var(--r-ctl); background: var(--fill); color: var(--ink); font: 13px/1.45 var(--mono); }
+#targetText:focus { outline: 2px solid var(--s1); outline-offset: 1px; }
+.tg-table { display: flex; flex-direction: column; margin-top: 8px; }
+.tg-row { display: grid; grid-template-columns: minmax(120px, 1.2fr) 56px minmax(120px, 1.3fr) minmax(160px, 2fr); gap: 10px; align-items: baseline; width: 100%; padding: 7px 6px; border: 0; border-bottom: 1px solid var(--hair-2); background: transparent; color: var(--ink); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.tg-row:hover:not(:disabled):not(.tg-head) { background: var(--fill-2); }
+.tg-head { cursor: default; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.tg-none { color: var(--muted); cursor: default; }
+.tg-n { font-family: var(--mono); font-size: 12px; }
+.tg-via { color: var(--ink-2); }
+.tg-best { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.tg-person { font-weight: 600; }
+.tg-role { color: var(--muted); font-size: 11.5px; flex-basis: 100%; order: 3; }
+@media (max-width: 640px) {
+  .tg-row { grid-template-columns: 1fr 44px; }
+  .tg-via, .tg-best { grid-column: 1 / -1; }
+  .tg-head .tg-via, .tg-head span:nth-child(3), .tg-head span:nth-child(4) { display: none; }
+}
