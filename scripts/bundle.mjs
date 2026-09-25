@@ -42,6 +42,7 @@ const MODULE_ORDER = [
   'src/ask.js',
   'src/routes.js',
   'src/targets.js',
+  'src/peoplelist.js',
   'src/llm.js',
   'src/enrich.js',
   'src/askllm.js',
