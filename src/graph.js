@@ -73,7 +73,7 @@ export function createConstellation(el, D, opts = {}) {
     const id = PPL0 + i;
     allNodes.push({
       id, t: 'p', name: p[0], role: p[1], ci: p[2], di: p[3], si: p[4],
-      slug: p[5], freeComp: p[6], val: 0.55
+      slug: p[5], freeComp: p[6], kb: p[7] || null, val: 0.55
     });
     allLinks.push({ source: id, target: DOM0 + p[3], k: 'dom' });
     if (p[2] >= 0) allLinks.push({ source: id, target: COMP0 + p[2], k: 'comp' });
@@ -90,6 +90,27 @@ export function createConstellation(el, D, opts = {}) {
   // constellation. Holds node objects, which is what the accessors receive.
   let hitSet = null;
   const SET_VAL = 2.2;
+
+  // While a search is showing, everyone outside it leaves the scene: only the
+  // matches, the hubs they hang from, and the centre stay. Visibility only, so
+  // the layout does not move and clearing the search puts everyone back.
+  let setDoms = null, setComps = null;
+  const hitsListeners = [];
+  let hitLabel = '';
+  const inSearch = n => {
+    if (!hitSet) return true;
+    if (n.t === 'root') return true;
+    if (n.t === 'p') return n === hitNode || hitSet.has(n);
+    if (n.t === 'dom') return setDoms.has(n.id);
+    if (n.t === 'comp') return setComps.has(n.id);
+    return true;
+  };
+  const endOf = v => (typeof v === 'object' ? v : null);
+  const linkInSearch = l => {
+    if (!hitSet) return true;
+    const s = endOf(l.source), t = endOf(l.target);
+    return (!s || inSearch(s)) && (!t || inSearch(t));
+  };
 
   const isVisible = n => {
     if (n.t !== 'p') return true;
@@ -180,6 +201,8 @@ export function createConstellation(el, D, opts = {}) {
     .nodeOpacity(0.92)
     .nodeLabel(() => '')
     .linkColor(linkColor)
+    .nodeVisibility(inSearch)
+    .linkVisibility(linkInSearch)
     .linkWidth(0)
     .linkOpacity(1)
     .enableNodeDrag(false)
@@ -189,7 +212,10 @@ export function createConstellation(el, D, opts = {}) {
   G.d3Force('charge').strength(-38).distanceMax(340);
   G.d3Force('link').distance(l => (l.k === 'spine' ? 130 : l.k === 'comp' ? 34 : 22));
 
-  const repaint = () => { G.nodeColor(nodeColor).nodeVal(nodeVal).linkColor(linkColor); };
+  const repaint = () => {
+    G.nodeColor(nodeColor).nodeVal(nodeVal).linkColor(linkColor)
+      .nodeVisibility(inSearch).linkVisibility(linkInSearch);
+  };
 
   /** Pull the camera back until the whole graph is in frame. */
   function frameGraph(ms = 900) {
@@ -289,17 +315,24 @@ export function createConstellation(el, D, opts = {}) {
     el.innerHTML = '';
   }
 
+  // "In view" counts what is actually drawn, so a search narrows it too.
+  function emitStats() {
+    const g = G.graphData();
+    const nodes = g.nodes.filter(inSearch);
+    lastStats = {
+      nodes: nodes.length,
+      links: g.links.filter(linkInSearch).length,
+      people: nodes.filter(n => n.t === 'p').length,
+      comps: nodes.filter(n => n.t === 'comp').length
+    };
+    onStats(lastStats);
+  }
+
   function apply() {
     const g = build();
     G.graphData(g);
     wantFrame = true;
-    lastStats = {
-      nodes: g.nodes.length,
-      links: g.links.length,
-      people: g.nodes.filter(n => n.t === 'p').length,
-      comps: g.nodes.filter(n => n.t === 'comp').length
-    };
-    onStats(lastStats);
+    emitStats();
   }
 
   return {
@@ -338,11 +371,22 @@ export function createConstellation(el, D, opts = {}) {
     setHit(n) { hitNode = n || null; if (hitNode) wantFrame = false; repaint(); },
     get hits() { return hitSet; },
     /** Light a set of nodes and dim the rest. Colour re-bind only; the layout is untouched. */
-    setHits(nodes) {
+    setHits(nodes, label = '') {
       hitSet = nodes && nodes.size ? nodes : null;
+      hitLabel = hitSet ? label : '';
+      setDoms = new Set(); setComps = new Set();
+      if (hitSet) for (const n of hitSet) {
+        if (n.t !== 'p') continue;
+        setDoms.add(DOM0 + n.di);
+        if (n.ci >= 0) setComps.add(COMP0 + n.ci);
+      }
       if (hitSet) wantFrame = false;
       repaint();
+      emitStats();
+      for (const fn of hitsListeners) fn(hitSet, hitLabel);
     },
+    /** Called with the current search set (or null) whenever it changes. */
+    onHits(fn) { hitsListeners.push(fn); },
     setIsolate(di) {
       state.isolate = di;
       repaint();
@@ -353,9 +397,16 @@ export function createConstellation(el, D, opts = {}) {
      * anywhere in the name. Ties break on the shorter name, so "Ada Lovelace"
      * outranks "Adalberto Lovelace-Mendoza" for the query "ada".
      */
-    findPeople(q, limit = 40) {
+    findPeople(q, limit = Infinity) {
       const s = q.trim().toLowerCase();
       if (s.length < 2) return [];
+      // A pasted profile link (or bare linkedin.com/in/slug) finds that person exactly.
+      const url = s.match(/linkedin\.com\/in\/([^/?#\s]+)/);
+      if (url) {
+        let slug = url[1];
+        try { slug = decodeURIComponent(slug); } catch { /* keep it as typed */ }
+        return allNodes.filter(n => n.t === 'p' && n.slug && n.slug.toLowerCase() === slug);
+      }
       const out = [];
       for (const n of allNodes) {
         if (n.t !== 'p') continue;

@@ -9,6 +9,7 @@
   },
   "scripts": {
     "data": "node scripts/build-data.mjs",
+    "db": "node --no-warnings=ExperimentalWarning scripts/build-db.mjs",
     "dev": "node scripts/dev-server.mjs 8080",
     "bundle": "node scripts/bundle.mjs",
     "bundle:demo": "node scripts/bundle.mjs --no-data",

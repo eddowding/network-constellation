@@ -146,7 +146,7 @@ npm run dev</code></pre>
     <div id="teamList" class="team-list"></div>
     <div class="seg team-actions">
       <button type="button" id="teamShared">Known by 2+</button>
-      <button type="button" id="openTargets">Target accounts</button>
+      <button type="button" id="openTargets">Look up a list</button>
     </div>
     <span class="hint">Click a teammate to light their connections</span>
   </div>
@@ -285,13 +285,18 @@ npm run dev</code></pre>
   <div class="scrim" id="targetsScrim"></div>
   <div class="sheet-panel panel sheet-wide" role="dialog" aria-modal="true" aria-labelledby="targetsTitle">
     <div class="d-head">
-      <span class="lab" id="targetsTitle">Target accounts</span>
+      <span class="lab" id="targetsTitle">Look up a list</span>
       <button type="button" class="d-close" id="targetsClose" aria-label="Close">&times;</button>
     </div>
     <div class="sheet-body">
       <section class="enrich-body">
         <h2 class="sheet-h">Who can get us in?</h2>
-        <p class="ehelp">Paste the companies you want to reach, one per line, or choose a CSV export from your CRM (the column called Company, Account or Name is used). Each is matched against employers in the network, subsidiaries included, and the best introduction route is picked: a recent connection to the most senior person there.</p>
+        <div class="seg" id="listMode" role="group" aria-label="What the list holds">
+          <button type="button" data-m="companies" aria-pressed="true">Companies</button>
+          <button type="button" data-m="people" aria-pressed="false">People</button>
+        </div>
+        <p class="ehelp" data-for="companies">Paste the companies you want to reach, one per line, or choose a CSV export from your CRM (the column called Company, Account or Name is used). Each is matched against employers in the network, subsidiaries included, and the best introduction route is picked: a recent connection to the most senior person there.</p>
+        <p class="ehelp" data-for="people" hidden>Paste people, one per line: a LinkedIn profile link, “Name, Company”, or just a name. Or choose a CSV (an event list, a CRM export) with Name or First/Last name, and Company or LinkedIn URL columns. Each is looked up in the network with who on the team knows them; someone who is not, but whose company is, gets the best route in through a colleague.</p>
         <textarea id="targetText" rows="7" placeholder="Airbus&#10;Ryanair&#10;Microsoft" spellcheck="false"></textarea>
         <div class="erow">
           <button type="button" class="linky" id="targetFileBtn">Choose a CSV</button>

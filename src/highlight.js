@@ -10,8 +10,9 @@
 // furniture around it.
 
 import { sceneRight } from './dom.js';
+import { knownByText } from './routes.js';
 
-export function createHighlight(container, world, D) {
+export function createHighlight(container, world, D, people = null) {
   const el = document.createElement('div');
   el.className = 'nchit';
   el.innerHTML =
@@ -20,7 +21,7 @@ export function createHighlight(container, world, D) {
     '<span class="stem"></span>' +
     '<div class="card">' +
       '<span class="hn"></span><span class="hr"></span><span class="hc"></span>' +
-      '<span class="hm"></span><span class="hgo"></span>' +
+      '<span class="hm"></span><span class="hk"></span><span class="hgo"></span>' +
     '</div>';
   container.appendChild(el);
 
@@ -41,6 +42,7 @@ export function createHighlight(container, world, D) {
     q('.hr').textContent = n.role || '';
     q('.hc').textContent = company;
     q('.hm').textContent = D.sen[n.si] + ' · ' + D.doms[n.di];
+    q('.hk').textContent = knownByText(n, D, people?.[n.id - world.PPL0]);
     q('.hgo').textContent = n.slug ? 'Open profile ↗' : '';
     card.style.cursor = n.slug ? 'pointer' : 'default';
 

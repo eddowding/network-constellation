@@ -15,7 +15,7 @@ const monthYear = t => new Date(t).toLocaleDateString('en-GB', { month: 'short',
  * share, and the span of connection dates when the export carried them.
  */
 export function overviewNumbers(D, people) {
-  const total = D.total || people.length;
+  const total = D.total ?? people.length;
   const pct = total ? Math.round(((D.namedCompany || 0) / total) * 100) : 0;
   const topBands = SEN_ORDER
     .map((s, i) => ({ s, i, n: D.senCounts[i] || 0 }))
@@ -36,11 +36,44 @@ export function overviewNumbers(D, people) {
   return { total, pct, topBands, topFields, span };
 }
 
-export function renderOverview({ D, people, world }) {
+/**
+ * The same counts as D carries, for a subset of person nodes: what the
+ * overview shows while a search narrows the scene.
+ */
+export function subsetCounts(D, nodes) {
+  const senCounts = D.sen.map(() => 0);
+  const domCounts = D.doms.map(() => 0);
+  const comps = new Set();
+  let named = 0;
+  for (const n of nodes) {
+    senCounts[n.si]++;
+    domCounts[n.di]++;
+    if (n.ci >= 0) comps.add(n.ci);
+    if (n.ci >= 0 || n.freeComp) named++;
+  }
+  // fields in the order the subset has them, largest first
+  const order = D.doms.map((_, i) => i).filter(i => domCounts[i]).sort((a, b) => domCounts[b] - domCounts[a]);
+  return {
+    ...D,
+    total: nodes.length,
+    namedCompany: named,
+    senCounts,
+    doms: order.map(i => D.doms[i]),
+    domCounts: order.map(i => domCounts[i]),
+    domIx: order,
+    comps: [...comps]
+  };
+}
+
+export function renderOverview({ D: fullD, people: allPeople, world, subset = null, label = '' }) {
   const el = $('overview');
   if (!el) return;
 
-  const { total, pct, topBands, topFields, span } = overviewNumbers(D, people);
+  const D = subset ? subsetCounts(fullD, subset) : fullD;
+  const people = subset ? subset.map(n => allPeople[n.id - world.PPL0]).filter(Boolean) : allPeople;
+  const { total, pct, topBands, topFields: rawFields, span } = overviewNumbers(D, people);
+  // a subset reorders the fields; map back to the full index for colour and isolate
+  const topFields = rawFields.map(x => ({ ...x, i: D.domIx ? D.domIx[x.i] : x.i }));
 
   // seniority as one stacked bar, ordered senior -> unstated
   const senTotal = D.senCounts.reduce((a, b) => a + b, 0) || 1;
@@ -54,6 +87,7 @@ export function renderOverview({ D, people, world }) {
   const topMax = topFields.length ? topFields[0].n : 1;
 
   el.innerHTML =
+    (label ? `<div class="ov-line ov-scope"><span class="ov-k">Showing</span><span class="ov-field">${esc(label)}</span></div>` : '') +
     `<div class="ov-stats">` +
       `<div class="ov-stat"><span class="ov-n">${fmt(total)}</span><span class="ov-k">people</span></div>` +
       `<div class="ov-stat"><span class="ov-n">${pct}%</span><span class="ov-k">with an employer</span></div>` +
@@ -98,5 +132,6 @@ export function renderOverview({ D, people, world }) {
   const markRows = () => {
     for (const row of el.querySelectorAll('.ov-frow')) row.classList.toggle('on', sel?.value === row.dataset.di);
   };
-  sel?.addEventListener('change', markRows);
+  if (!el.dataset.wired) { el.dataset.wired = '1'; sel?.addEventListener('change', markRows); }
+  markRows();
 }

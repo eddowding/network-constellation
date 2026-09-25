@@ -294,6 +294,7 @@ button:active, .ares:active, .drow:active, .icon-btn:active, .linky:active, a.lp
 #tip.on { opacity: 1; }
 #tip .tn { font-weight: 600; font-size: 13px; display: block; margin-bottom: 2px; }
 #tip .tr { font-size: 12px; color: var(--ink-2); display: block; line-height: 1.35; }
+#tip .tk { display: block; margin-top: 5px; font-size: 12px; color: var(--hit); }
 #tip .tm {
   font-family: var(--mono);
   font-size: 10px;
@@ -531,7 +532,14 @@ body.answering #noteWrap, body.detailing #noteWrap { right: 398px; }
 .nchit .hc { display: block; font-size: 12px; color: var(--ink-2); line-height: 1.35; }
 .nchit .hr:empty,
 .nchit .hc:empty,
-.nchit .hgo:empty { display: none; }
+.nchit .hgo:empty,
+.nchit .hk:empty { display: none; }
+.nchit .hk {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--ink);
+}
 .nchit .hm {
   display: block;
   margin-top: 5px;
@@ -1731,3 +1739,39 @@ body.sheet-up { overflow: hidden; }
   .tg-via, .tg-best { grid-column: 1 / -1; }
   .tg-head .tg-via, .tg-head span:nth-child(3), .tg-head span:nth-child(4) { display: none; }
 }
+
+/* ---------- name search: every match, listed ---------- */
+.find-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-top: 6px;
+  border: 1px solid var(--hair-2);
+  border-radius: 8px;
+}
+.find-list[hidden] { display: none; }
+.find-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 9px;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--hair-2);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.find-row:hover, .find-row.on { background: var(--fill-2); }
+.find-row.on .fr-name { color: var(--hit); }
+.fr-name { font-size: 13px; color: var(--ink); }
+.fr-sub { font-size: 11px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fr-via { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.fr-more { padding: 6px 9px; font-size: 11px; color: var(--muted); }
+.ov-scope .ov-field { color: var(--hit); }
+#listMode { margin-bottom: 10px; }
+.tg-status { font-size: 11px; white-space: normal; }
+.tg-co .tg-role { display: block; }
+.tg-people .tg-row { grid-template-columns: minmax(120px, 1.2fr) 110px minmax(120px, 1.2fr) minmax(160px, 2fr); }

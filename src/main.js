@@ -16,6 +16,7 @@ import { $ } from './dom.js';
 
 const DATA_URL = 'data/graph-data.json';
 const PEOPLE_URL = 'data/people.json';
+const EXPORTS_URL = 'data/exports.json';
 const SAMPLE_URL = 'sample/sample-connections.csv';
 
 // data/ and logos/ are gitignored: they exist only on the machine that ran
@@ -49,8 +50,25 @@ async function findGraph() {
   }
 
   const kept = await loadGraph();
+
+  // Local runs pool whatever exports are in data/. A kept graph built from the
+  // same files is reused; a new, changed or removed file rebuilds it.
+  if (LOCAL) {
+    try {
+      const res = await fetch(EXPORTS_URL);
+      const list = res.ok ? await res.json() : [];
+      if (list.length) {
+        const sig = list.map(f => `${f.name}:${f.size}:${f.mtime}`).join('|');
+        if (!(kept?.D && kept.diskSig === sig)) {
+          const owners = Object.fromEntries((kept?.exports || []).map(e => [e.name, e.owner]));
+          return { preload: list, sig, owners };
+        }
+      }
+    } catch { /* no listing: an ordinary static server */ }
+  }
+
   if (kept?.D) {
-    return { D: kept.D, people: kept.people || peopleFromTuples(kept.D), source: 'browser', sourceName: kept.sourceName, exports: kept.exports };
+    return { D: kept.D, people: kept.people || peopleFromTuples(kept.D), source: 'browser', sourceName: kept.sourceName, exports: kept.exports, fromDisk: Boolean(kept.diskSig) };
   }
 
   if (!LOCAL) return null;
@@ -143,6 +161,14 @@ const boot = async () => {
   });
 
   const [found] = await Promise.all([findGraph(), loadLocalLibrary()]);
+  if (found?.preload) {
+    const files = await Promise.all(found.preload.map(async f => {
+      const res = await fetch('data/' + encodeURIComponent(f.name));
+      return new File([await res.arrayBuffer()], f.name);
+    }));
+    await landing.preload(files, found.sig, found.owners);
+    return;
+  }
   if (found) {
     landing.hide();
     starting = start(found, landing);
@@ -196,8 +222,8 @@ async function start(found, landing, existing) {
     }
   }
 
-  const marker = createHighlight($('labels'), world, D);
-  const ui = wireUI(world, D, marker);
+  const marker = createHighlight($('labels'), world, D, people);
+  const ui = wireUI(world, D, marker, people);
   createLabels($('labels'), world, D);
 
   const logoSources = await loadLogos();
@@ -240,6 +266,14 @@ async function start(found, landing, existing) {
   ask.detail = detail;
 
   renderOverview({ D, people, world });
+  // the overview follows a search: its numbers become the matches'
+  world.onHits((set, label) => {
+    const subset = set ? [...set].filter(n => n.t === 'p') : null;
+    renderOverview({
+      D, people, world, subset,
+      label: subset ? (label || 'Results') + ' · ' + subset.length.toLocaleString('en-GB') + (subset.length === 1 ? ' person' : ' people') : ''
+    });
+  });
   const team = wireTeam({ D, people, ask, say: ui.say });
 
   wireDataControls(found, landing, ui);
@@ -300,7 +334,7 @@ function wireDataControls(found, landing, ui) {
   if (found.exports?.length) landing.setExports(found.exports);
   hint.textContent = {
     demo: 'The demo: 250 invented people, nothing kept',
-    browser: (found.sourceName || 'Your file') + ' · kept in this browser only',
+    browser: (found.sourceName || 'Your file') + (found.fromDisk ? ' · from data/' : ' · kept in this browser only'),
     disk: 'Read from data/graph-data.json',
     memory: 'Not kept: this browser would not store it'
   }[found.source] || '';

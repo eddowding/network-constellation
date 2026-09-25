@@ -72,3 +72,15 @@ export function byTeammate(list, team, now = Date.now()) {
   }
   return out.filter(r => r.n).sort((a, b) => b.strong - a.strong || b.n - a.n);
 }
+
+/**
+ * "Known by Sam · 2025, Alex · 2024" for a graph node, pooled exports
+ * only. `person` (the rich view) adds the years; without it, names alone.
+ */
+export function knownByText(n, D, person = null) {
+  if (!D.team?.length || !n.kb?.length) return '';
+  const list = person?.knownBy?.length
+    ? person.knownBy.map(k => D.team[k.o] + (k.t ? ' · ' + new Date(k.t).getUTCFullYear() : ''))
+    : n.kb.map(o => D.team[o]);
+  return 'Known by ' + list.join(', ');
+}

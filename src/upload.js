@@ -52,6 +52,7 @@ export function createLanding({ onBuilt } = {}) {
   let mapping = null;       // that export's entry
   let openDemo = null;
   let accepting = true;     // false in a single-file build that carries its own graph
+  let diskSig = null;       // set when the exports came from data/ on a local run
 
   const isUp = () => !el.classList.contains('gone');
   const show = () => {
@@ -315,7 +316,8 @@ export function createLanding({ onBuilt } = {}) {
       // without asking everyone to drop theirs again.
       await saveGraph({
         D: built.D, people: built.people, sourceName,
-        exports: exports.map(({ name, owner, rows, columns }) => ({ name, owner, rows, columns }))
+        exports: exports.map(({ name, owner, rows, columns }) => ({ name, owner, rows, columns })),
+        diskSig
       });
       await phase('Opening…');
     } catch (err) {
@@ -406,6 +408,23 @@ export function createLanding({ onBuilt } = {}) {
     if (exports.length) summarise();
   }
 
+  /**
+   * Local runs: pool every export in data/ and build straight away. Owners
+   * named earlier in this browser are kept; the rest come from the file name.
+   * Stops at the export list if a file needs its columns set.
+   */
+  async function preload(files, sig, owners = {}) {
+    show();
+    diskSig = sig;
+    exports = [];
+    say(`<span class="ls-mono">Reading ${files.length} ${files.length === 1 ? 'export' : 'exports'} from data/…</span>`);
+    await takeAll(files);
+    for (const e of exports) if (owners[e.name]) e.owner = owners[e.name];
+    if (mapping || !exports.length) return;
+    summarise();
+    await build();
+  }
+
   setDemo(null);
-  return { show, hide, isUp, setDemo, setBack, takeText, setExports, setAccept: v => { accepting = v; } };
+  return { show, hide, isUp, setDemo, setBack, takeText, setExports, preload, setAccept: v => { accepting = v; } };
 }

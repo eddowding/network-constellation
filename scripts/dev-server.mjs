@@ -14,7 +14,8 @@
 // which is what a first visitor has.
 
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 
 const ROOT = resolve('.');
@@ -40,10 +41,34 @@ const TYPES = {
   '.txt': 'text/plain; charset=utf-8'
 };
 
+// Keep data/network.db in step with the exports: rebuilt whenever the app
+// sees data/ change. A failure is reported and leaves the app unaffected.
+let lastExports = '';
+function rebuildDb() {
+  execFile(process.execPath, ['--no-warnings=ExperimentalWarning', 'scripts/build-db.mjs'], (err, out, errOut) => {
+    console.log(err ? 'network.db not rebuilt: ' + (errOut || err.message).trim() : out.trim());
+  });
+}
+
 createServer(async (req, res) => {
   try {
     let path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (path.endsWith('/')) path += 'index.html';
+    // The exports sitting in data/, so the app can pool them without anyone
+    // dropping them in. Name, size and mtime let it rebuild only on a change.
+    if (path === '/data/exports.json' && !BARE) {
+      const dir = join(ROOT, 'data');
+      const names = (await readdir(dir).catch(() => [])).filter(n => /\.csv$/i.test(n)).sort();
+      const list = await Promise.all(names.map(async name => {
+        const s = await stat(join(dir, name));
+        return { name, size: s.size, mtime: Math.round(s.mtimeMs) };
+      }));
+      const body = JSON.stringify(list);
+      if (list.length && body !== lastExports) { lastExports = body; rebuildDb(); }
+      res.writeHead(200, { 'Content-Type': TYPES['.json'], 'Cache-Control': 'no-store' });
+      res.end(body);
+      return;
+    }
     const file = normalize(join(ROOT, path));
     if (!file.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
     if (BARE && PRIVATE.test(file.slice(ROOT.length))) throw Object.assign(new Error('bare'), { code: 'ENOENT' });

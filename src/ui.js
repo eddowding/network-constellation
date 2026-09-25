@@ -2,8 +2,9 @@
 // object returned by createConstellation and knows nothing about three.js.
 
 import { fmt, esc, $, sceneRight } from './dom.js';
+import { knownByText } from './routes.js';
 
-export function wireUI(world, D, hit) {
+export function wireUI(world, D, hit, people = null) {
   /* ---- tooltip ---- */
   const tip = $('tip');
   const scene = $('scene');
@@ -11,7 +12,7 @@ export function wireUI(world, D, hit) {
   world.graph.onNodeHover(n => {
     scene.style.cursor = n && n.t === 'p' && n.slug ? 'pointer' : 'default';
     if (!n) { tip.classList.remove('on'); return; }
-    tip.innerHTML = tipHtml(n, D);
+    tip.innerHTML = tipHtml(n, D, people && n.t === 'p' ? people[n.id - world.PPL0] : null);
     tip.classList.add('on');
   });
 
@@ -123,12 +124,57 @@ export function wireUI(world, D, hit) {
     hooks.landed?.(n, ctx);
   }
 
+  // the name search's own matches, so clearing it does not wipe a question's
+  let ownHits = null;
+
   function clearHit() {
     matches = [];
     at = 0;
+    if (ownHits && world.hits === ownHits) world.setHits(null);
+    ownHits = null;
+    list.hidden = true;
+    list.innerHTML = '';
     world.setHit(null);
     hit.clear();
   }
+
+  // Several matches: everyone else leaves the scene, the camera takes in all
+  // of them, and a list under the box says who they are. One match (a full
+  // name, a profile link) flies straight to that person.
+  const list = document.createElement('div');
+  list.className = 'find-list';
+  list.hidden = true;
+  search.insertAdjacentElement('afterend', list);
+  const LIST_MAX = 60;
+
+  function showList(q) {
+    const shown = matches.slice(0, LIST_MAX);
+    list.innerHTML =
+      shown.map((n, i) => {
+        const company = n.ci >= 0 ? D.comps[n.ci] : (n.freeComp || '');
+        const known = D.team?.length && n.kb?.length ? 'via ' + n.kb.map(o => D.team[o]).join(', ') : '';
+        const sub = [n.role, company].filter(Boolean).join(' · ');
+        return `<button type="button" class="find-row" data-i="${i}">` +
+          `<span class="fr-name">${esc(n.name)}</span>` +
+          (sub ? `<span class="fr-sub">${esc(sub)}</span>` : '') +
+          (known ? `<span class="fr-via">${esc(known)}</span>` : '') +
+          `</button>`;
+      }).join('') +
+      (matches.length > LIST_MAX ? `<span class="fr-more">and ${fmt(matches.length - LIST_MAX)} more — type more of the name</span>` : '');
+    list.hidden = false;
+  }
+
+  list.addEventListener('click', e => {
+    const b = e.target.closest('.find-row');
+    if (!b) return;
+    at = Number(b.dataset.i);
+    markRow();
+    land(matches[at], { index: at, total: matches.length });
+  });
+  const markRow = () => {
+    for (const b of list.querySelectorAll('.find-row')) b.classList.toggle('on', Number(b.dataset.i) === at);
+    list.querySelector('.find-row.on')?.scrollIntoView({ block: 'nearest' });
+  };
 
   search.addEventListener('input', () => {
     clearTimeout(timer);
@@ -136,17 +182,33 @@ export function wireUI(world, D, hit) {
     if (q.length < 2) { clearHit(); return; }
     timer = setTimeout(() => {
       matches = world.findPeople(q).filter(n => n.x !== undefined);
-      at = 0;
+      at = -1;
       if (!matches.length) { clearHit(); say('No one here matches "' + q + '"'); return; }
-      land(matches[0], { auto: true });
+      // everyone else leaves the scene while the search is up
+      ownHits = new Set(matches);
+      const label = /linkedin\.com\/in\//i.test(q) ? 'Profile link' : `“${q}”`;
+      world.setHits(ownHits, label);
+      if (matches.length === 1) {
+        list.hidden = true;
+        at = 0;
+        land(matches[0], { auto: true });
+        return;
+      }
+      world.setHit(null);
+      hit.clear();
+      showEveryone();
+      world.frameNodes(matches);
+      showList(q);
+      say(`${fmt(matches.length)} match “${q}”  ·  Enter steps through them`);
     }, 240);
   });
 
   search.addEventListener('keydown', e => {
     if (e.key === 'Enter' && matches.length > 1) {
       e.preventDefault();
-      at = (at + (e.shiftKey ? matches.length - 1 : 1)) % matches.length;
-      land(matches[at], { auto: true });
+      at = at < 0 ? 0 : (at + (e.shiftKey ? matches.length - 1 : 1)) % matches.length;
+      markRow();
+      land(matches[at], { auto: true, index: at, total: matches.length });
     }
     if (e.key === 'Escape') { search.value = ''; clearHit(); search.blur(); }
   });
@@ -232,7 +294,7 @@ function row(color, label, count, di) {
     `<span class="lgi-label">${esc(label)}</span><span class="lgn">${fmt(count)}</span></${tag}>`;
 }
 
-function tipHtml(n, D) {
+function tipHtml(n, D, person = null) {
   if (n.t === 'root') {
     return '<span class="tn">' + esc(n.name) + '</span>' +
       '<span class="tr">The centre. Everyone else here is one of your connections</span>';
@@ -249,7 +311,8 @@ function tipHtml(n, D) {
   return `<span class="tn">${esc(n.name)}</span>` +
     (n.role ? `<span class="tr">${esc(n.role)}</span>` : '') +
     (company ? `<span class="tr">${esc(company)}</span>` : '') +
-    `<span class="tm">${esc(D.sen[n.si])} · ${esc(D.doms[n.di])}</span>`;
+    `<span class="tm">${esc(D.sen[n.si])} · ${esc(D.doms[n.di])}</span>` +
+    (knownByText(n, D, person) ? `<span class="tk">${esc(knownByText(n, D, person))}</span>` : '');
 }
 
 let statusTimer = null;

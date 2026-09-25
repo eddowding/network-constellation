@@ -114,9 +114,9 @@ export async function loadGraph() {
   }
 }
 
-export async function saveGraph({ D, people, sourceName, exports }) {
+export async function saveGraph({ D, people, sourceName, exports, diskSig = null }) {
   await tx(GRAPH, 'readwrite', store => {
-    store.put({ savedAt: Date.now(), sourceName, D, people, exports }, CURRENT);
+    store.put({ savedAt: Date.now(), sourceName, D, people, exports, diskSig }, CURRENT);
   });
 }
 
